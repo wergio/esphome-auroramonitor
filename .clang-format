@@ -1,0 +1,15 @@
+# Code style of the C++ sources, close to the one used by ESPHome.
+# Format with: clang-format -i components/aurora_monitor/*.h components/aurora_monitor/*.cpp
+Language: Cpp
+BasedOnStyle: Google
+ColumnLimit: 120
+IndentWidth: 2
+AccessModifierOffset: -1
+AllowShortFunctionsOnASingleLine: All
+AllowShortIfStatementsOnASingleLine: false
+AllowShortLoopsOnASingleLine: false
+DerivePointerAlignment: false
+PointerAlignment: Right
+SpaceAfterCStyleCast: true
+SortIncludes: false
+IncludeBlocks: Preserve

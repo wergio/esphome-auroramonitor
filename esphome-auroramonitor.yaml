@@ -1,0 +1,132 @@
+esphome:
+  name: esphome-auroramonitor
+  friendly_name: ESPHome Aurora Inverter Monitor
+
+esp8266:
+  board: d1_mini # tested only on Wemos D1 mini, other esp8266 and esp32 should work
+
+external_components:
+  # Keep this as it is to build the component straight from the GitHub
+  # repository. To build from a local copy instead, copy the
+  # components/aurora_monitor folder of the repository into the "components"
+  # folder, comment out the two lines below and uncomment the local source.
+  - source: github://wergio/esphome-auroramonitor
+    components: [aurora_monitor]
+  # - source:
+  #     type: local
+  #     path: components
+
+# On ESP8266 the RS485 bus uses UART0, so serial logging must stay off it:
+# "baud_rate: 0" disables serial logging (the logs are still shown over WiFi
+# by the ESPHome dashboard and Home Assistant).
+# On ESP32 you can remove "baud_rate: 0": the component uses UART2, so the
+# default logger settings are fine.
+logger:
+  baud_rate: 0
+  # Log level, from the least to the most detailed:
+  #   NONE          nothing
+  #   ERROR         errors (this component logs none)
+  #   WARN          communication problems: CRC errors, incomplete answers,
+  #                 polling cycles longer than update_interval
+  #   INFO          also the inverters starting and stopping to answer
+  #                 (every morning and evening), new-day resets and the
+  #                 values restored after a reboot
+  #   DEBUG         also the response times and the failed or repeated
+  #                 requests
+  #   VERBOSE       also the raw frames sent and received, and a line for
+  #                 every value published by the sensors
+  #   VERY_VERBOSE  also the internal details of ESPHome
+  level: INFO
+  # Keep these less detailed than the global level, to avoid a line for every
+  # sensor update with VERBOSE or more detailed levels.
+  logs:
+    sensor: WARN
+    text_sensor: WARN
+
+# Default Home Assistant WiFi, API and OTA settings (remember to set the secrets)
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+api:
+  encryption:
+    key: !secret auroramonitor_api_key
+
+ota:
+  - platform: esphome
+    encryption:
+
+# Clock component used to reset the daily, weekly, monthly and yearly values
+# at the start of a new period while the inverters are off. Leave as it is.
+time:
+  - platform: homeassistant
+    id: ha_time
+
+# Button to restart the ESP if needed
+button:
+  - platform: restart
+    name: "Restart"
+
+# Specific settings for the component
+aurora_monitor:
+
+  # One entry per inverter on the RS485 bus; this is enough for a single
+  # inverter, whose sensors are named v_in_1, cumulated_energy_total, ...
+  inverters:
+    - address: 2 # RS485 address of the inverter (typically 2)
+
+  # With more than one inverter, add one entry per inverter, each with its
+  # own address and a prefix: every sensor is created automatically and
+  # named <prefix>_<sensor>, e.g. inverter1_v_in_1.
+  # inverters:
+  #   - address: 2
+  #     prefix: inverter1
+  #   - address: 3
+  #     prefix: inverter2
+  # For an inverter with a single MPPT input, add to its entry:
+  #     mppt_inputs: 1
+  # To skip some sensors:
+  #     exclude: [temp_booster, grid_frequency]
+  # Any sensor can be customised with the usual ESPHome sensor options:
+  #     sensors:
+  #       cumulated_energy_total:
+  #         name: "Inverter 2 total energy"
+  #         filters:
+  #           - multiply: 0.001
+  #         unit_of_measurement: kWh
+
+  # Pins used on the ESP (D1 mini labels in brackets).
+  # On ESP8266 the RS485 bus uses UART0 on its swapped pins, RX GPIO13 and
+  # TX GPIO15; the only other choice is RX GPIO3 / TX GPIO1, which are shared
+  # with the USB adapter.
+  # ESP32 defaults: rx_pin 14, tx_pin 27, gpio_tx_control_pin 26.
+  rx_pin: 13 # [D7] RS485 module RO
+  tx_pin: 15 # [D8] RS485 module DI
+  gpio_tx_control_pin: 12 # [D6] RS485 module DE + RE
+  # Optional circuit that resets the RS485 adapter; it adds a
+  # "Reset RS485 adapter" button (see the README). Remove it if you have no
+  # reset circuit.
+  gpio_reset_pin: 14 # [D5]
+
+  # The activity LED stays on during start-up and then lights up while an
+  # inverter is being read. Set activity_led to false to leave it off.
+  # activity_led: false
+  # If you don't want to use the on-board LED (GPIO2 inverted
+  # on ESP8266 and not inverted on ESP32), you can specify another pin
+  # activity_led_pin:
+  #   number: 2
+  #   inverted: true
+
+  # How often all inverters are polled. Change if needed.
+  # update_interval: 15s
+
+  # RS485 timing: wait after enabling the transmitter, and maximum time to
+  # wait for an answer. The DEBUG log shows the measured response times.
+  # Change if needed.
+  # tx_enable_delay: 50ms
+  # response_timeout: 1000ms
+
+  # Extra attempts when a request gets no valid answer (0-5).
+  # retries: 1
+
+  time_id: ha_time # Leave as it is.
