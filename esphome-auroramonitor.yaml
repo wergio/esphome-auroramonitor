@@ -57,7 +57,8 @@ ota:
     encryption:
 
 # Clock component used to reset the daily, weekly, monthly and yearly values
-# at the start of a new period while the inverters are off. Leave as it is.
+# at the start of a new period while the inverters are off, to restore the
+# saved values after a reboot and for clock_offset. Required: leave as it is.
 time:
   - platform: homeassistant
     id: ha_time
@@ -129,4 +130,4 @@ aurora_monitor:
   # Extra attempts when a request gets no valid answer (0-5).
   # retries: 1
 
-  time_id: ha_time # Leave as it is.
+  time_id: ha_time # Required, leave as it is.

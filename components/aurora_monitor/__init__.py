@@ -38,6 +38,7 @@ from esphome.const import (
 from esphome.core import CORE
 
 CODEOWNERS = ["@wergio"]
+DEPENDENCIES = ["time"]
 AUTO_LOAD = ["sensor", "text_sensor", "button"]
 
 aurora_monitor_ns = cg.esphome_ns.namespace("aurora_monitor")
@@ -180,7 +181,6 @@ EXTRA_TEXTS = {
         _diagnostic_text("mdi:calendar-month"),
     ),
     "firmware": ("EXTRA_FIRMWARE", _diagnostic_text("mdi:chip")),
-    "inverter_time": ("EXTRA_CLOCK", _diagnostic_text("mdi:clock-outline")),
     "last_alarms": ("EXTRA_LAST_ALARMS", _diagnostic_text("mdi:alert-outline")),
 }
 # Numeric sensor key -> (C++ InverterExtra, schema). The isolation resistance
@@ -334,11 +334,6 @@ def _set_defaults(config):
             DEFAULT_TX_CONTROL_PIN[CORE.target_platform]
         )
 
-    # The clock offset needs the local time.
-    if CONF_TIME_ID not in config:
-        for inverter in config[CONF_INVERTERS]:
-            inverter[CONF_SENSORS].pop(CONF_CLOCK_OFFSET, None)
-
     # The reset circuit comes with its button (internal entry, not a YAML option).
     if CONF_RESET_PIN in config:
         config[CONF_RESET_BUTTON] = RESET_BUTTON_SCHEMA({CONF_NAME: RESET_BUTTON_NAME})
@@ -382,7 +377,9 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_TX_PIN): pins.internal_gpio_output_pin_number,
             cv.Optional(CONF_TX_CONTROL_PIN): pins.gpio_output_pin_schema,
             cv.Optional(CONF_RESET_PIN): pins.gpio_output_pin_schema,
-            cv.Optional(CONF_TIME_ID): cv.use_id(time_.RealTimeClock),
+            # Needed for the period resets, the restore after a reboot and
+            # clock_offset.
+            cv.Required(CONF_TIME_ID): cv.use_id(time_.RealTimeClock),
             cv.Optional(CONF_ACTIVITY_LED, default=True): cv.boolean,
             cv.Optional(CONF_ACTIVITY_LED_PIN): pins.gpio_output_pin_schema,
             cv.Optional(
@@ -423,9 +420,8 @@ async def to_code(config):
         reset_button = await button.new_button(config[CONF_RESET_BUTTON])
         await cg.register_parented(reset_button, var)
 
-    if CONF_TIME_ID in config:
-        clock = await cg.get_variable(config[CONF_TIME_ID])
-        cg.add(var.set_time(clock))
+    clock = await cg.get_variable(config[CONF_TIME_ID])
+    cg.add(var.set_time(clock))
 
     if config[CONF_ACTIVITY_LED]:
         led_pin = await cg.gpio_pin_expression(config[CONF_ACTIVITY_LED_PIN])

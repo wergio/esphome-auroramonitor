@@ -11,7 +11,7 @@ A single ESP8266 (or ESP32) board with a TTL-to-RS485 transceiver polls the inve
 - Device and state classes on every sensor, ready for the Home Assistant Energy dashboard
 - 22 sensors per inverter: DC input voltage/current/power for both strings, total input power, AC grid power/voltage/current/frequency, conversion efficiency, daily and all-time power peaks, inverter and booster temperatures, energy produced today / this week / this month / this year / in total
 - Text sensors per inverter for the connection status, the inverter state and its alarm, plus an alarm history
-- Diagnostic entities with the inverter model, part and serial number, firmware, manufacturing date and clock, plus isolation resistance and leakage currents
+- Diagnostic entities with the inverter model, part and serial number, firmware, manufacturing date and clock offset, plus isolation resistance and leakage currents
 - Only the values that are used are requested from the inverter, keeping each polling cycle short
 - Automatic reinitialisation of the serial port if an inverter stops responding
 - Energy counters and power peaks are saved to flash when an inverter switches off and restored after a reboot
@@ -106,7 +106,7 @@ aurora_monitor:
     - address: 2
 ```
 
-This creates every sensor listed below, named `v_in_1`, `v_in_2`, and so on. `baud_rate: 0` is needed only on ESP8266, and `time_id` is needed for the period resets described below.
+This creates every sensor listed below, named `v_in_1`, `v_in_2`, and so on. `baud_rate: 0` is needed only on ESP8266, and `time_id` is required: the component needs the local time for the period resets described below, to restore the saved values after a reboot and for `clock_offset`.
 
 ### Inverters
 
@@ -150,12 +150,12 @@ Each inverter adds up to 20 requests to every polling cycle; with many inverters
 | `rx_pin`, `tx_pin`    | `13`, `15` (ESP8266), `14`, `27` (ESP32) | UART pins of the RS485 module |
 | `gpio_tx_control_pin` | `12` (ESP8266), `26` (ESP32) | GPIO driving the `DE`/`RE` pins of the RS485 module |
 | `gpio_reset_pin`      | —       | GPIO of an optional RS485 adapter reset circuit; adds the reset button, see below |
-| `time_id`             | —       | ESPHome time component used to reset the period values and for `clock_offset` |
+| `time_id`             | —       | ESPHome time component (required): used for the period resets, the restore after a reboot and `clock_offset` |
 | `activity_led`        | `true`  | Enable activity LED                               |
 | `activity_led_pin`    | GPIO2, inverted (active low) by default on ESP8266   | Custom LED pin  |
 | `tx_enable_delay`     | `50ms`  | Wait after enabling the RS485 transmitter           |
 | `response_timeout`    | `1000ms`| Maximum wait for an inverter answer. The measured response times (from a `DEBUG` log) may help to choose the correct value.                 |
-| `retries`             | `1`     | Extra attempts (0-5) when a request gets no valid answer; the state request is not repeated, so an inverter that is off is detected without delay |
+| `retries`             | `1`     | Extra attempts (0-5) when a request gets no valid answer; the state request is repeated only while the inverter is connected, so a single lost answer does not disconnect it and an inverter that is off costs a single timeout |
 | `update_interval`     | `15s`   | How often the inverters are polled                  |
 
 ### Sensors
@@ -193,8 +193,7 @@ Every inverter gets these entities, named `<prefix>_<key>` (or just `<key>` with
 | `serial_number`             | —    | Diagnostic text sensor: serial number                        |
 | `manufacturing_date`        | —    | Diagnostic text sensor: manufacturing year and week, e.g. `2009-W23` |
 | `firmware`                  | —    | Diagnostic text sensor: firmware release                     |
-| `inverter_time`             | —    | Diagnostic text sensor: date and time of the inverter clock  |
-| `clock_offset`              | s    | Diagnostic sensor: inverter clock minus the Home Assistant local time (only with `time_id`) |
+| `clock_offset`              | s    | Diagnostic sensor: inverter clock minus the Home Assistant local time |
 | `isolation_resistance`      | MΩ   | Diagnostic sensor: isolation resistance of the PV field (Riso)  |
 | `leakage_current_dc_dc`, `leakage_current_inverter` | A | Diagnostic sensors: leakage current measured by the DC/DC and the inverter stage |
 
@@ -209,7 +208,7 @@ Every answer carries a transmission state. When the inverter answers with an err
 The diagnostic entities are read only when the inverter connects, that is after a reboot of the device and every morning when the inverter switches on, so they do not slow down the normal polling cycle:
 
 - `model`, `part_number`, `serial_number`, `manufacturing_date` and `firmware` describe the inverter and do not change.
-- `inverter_time` and `clock_offset` show whether the inverter clock is right: the inverter uses it to reset its daily, weekly, monthly and yearly counters. The clock counts local time and probably ignores daylight saving time, so an offset of about one hour in summer can be normal.
+- `clock_offset` shows whether the inverter clock is right: the inverter uses it to reset its daily, weekly, monthly and yearly counters. The clock counts local time and probably ignores daylight saving time, so an offset of about one hour in summer can be normal.
 - `last_alarms` is also refreshed whenever `alarm_state` changes. The inverter empties its alarm queue when it is read, so the component keeps the history itself and saves it to flash when a new alarm arrives, so that it survives a reboot. Alarms such as `Sun Low` are normal at dawn and dusk.
 - `isolation_resistance`, `leakage_current_dc_dc` and `leakage_current_inverter` are also read every hour. A falling isolation resistance or a growing leakage current is an early sign of a ground fault (moisture in a connector, a damaged cable). The inverter measures the isolation resistance when it starts, so overnight it keeps its last value, while the leakage currents become *unknown*. The protocol does not state the unit of the isolation resistance: MΩ is what the inverter display shows, to be confirmed against it.
 
@@ -221,7 +220,7 @@ When an inverter stops answering (normally when it switches off in the evening),
 
 ### New day, week, month and year
 
-The inverter resets its own counters, but it is off at midnight and cannot report it. So, with `time_id` set, the component resets the values itself when a period ends while the inverter is off:
+The inverter resets its own counters, but it is off at midnight and cannot report it. So the component resets the values itself when a period ends while the inverter is off:
 
 - every day: `cumulated_energy_today` and `power_peak_today`
 - every Monday: `cumulated_energy_week`

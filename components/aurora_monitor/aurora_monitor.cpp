@@ -151,14 +151,6 @@ static void civil_from_days(int32_t z, int32_t *year, uint32_t *month) {
   *year = (int32_t) yoe + era * 400 + (m <= 2 ? 1 : 0);
 }
 
-// Day of the month for a number of days since 1970-01-01.
-static uint32_t day_of_month_from_days(int32_t z) {
-  int32_t year;
-  uint32_t month;
-  civil_from_days(z, &year, &month);
-  return (uint32_t) (z - days_from_civil(year, month, 1)) + 1;
-}
-
 // Index of the week (starting on Monday) for a number of days since 1970-01-01.
 static int32_t week_from_days(int32_t z) {
   // 1970-01-01 was a Thursday.
@@ -277,10 +269,12 @@ void AuroraMonitor::loop() {
     if (status == REQUEST_PENDING)
       return;
     this->request_active_ = false;
-    // No valid answer (timeout, incomplete answer, CRC error): try again. A
-    // missing answer to the state request means the inverter is off, so it
-    // is not repeated.
-    if (status == REQUEST_FAILED && this->state_ != PollState::PROBE && this->attempts_ < this->retries_) {
+    // No valid answer (timeout, incomplete answer, CRC error): try again. The
+    // state request is repeated only while the inverter is connected, so that
+    // a single lost answer does not mark it as disconnected, while an inverter
+    // that is off costs a single timeout per cycle.
+    if (status == REQUEST_FAILED && (this->state_ != PollState::PROBE || inv.connected) &&
+        this->attempts_ < this->retries_) {
       this->attempts_++;
       ESP_LOGD(TAG, "Inverter %s: no valid answer, retrying (%u/%u)", inv.name.c_str(), this->attempts_,
                this->retries_);
@@ -540,29 +534,18 @@ void AuroraMonitor::decode_extra_(Inverter &inv, InverterExtra extra) {
     case EXTRA_CLOCK: {
       const uint32_t seconds =
           ((uint32_t) data[2] << 24) | ((uint32_t) data[3] << 16) | ((uint32_t) data[4] << 8) | (uint32_t) data[5];
-      const int32_t days = CLOCK_EPOCH_DAYS + (int32_t) (seconds / 86400);
-      const uint32_t time_of_day = seconds % 86400;
-      int32_t year;
-      uint32_t month;
-      civil_from_days(days, &year, &month);
-      char buffer[24];
-      snprintf(buffer, sizeof(buffer), "%04d-%02u-%02u %02u:%02u:%02u", (int) year, (unsigned) month,
-               (unsigned) day_of_month_from_days(days), (unsigned) (time_of_day / 3600),
-               (unsigned) (time_of_day / 60 % 60), (unsigned) (time_of_day % 60));
-      publish_(text, buffer);
-
-#ifdef USE_TIME
       // Difference from the local time of Home Assistant, in seconds.
-      if (value != nullptr && this->time_ != nullptr) {
-        const ESPTime now = this->time_->now();
-        if (now.is_valid()) {
-          const int64_t local_seconds =
-              (int64_t) (days_from_civil(now.year, now.month, now.day_of_month) - CLOCK_EPOCH_DAYS) * 86400 +
-              now.hour * 3600 + now.minute * 60 + now.second;
-          publish_(value, (float) ((int64_t) seconds - local_seconds));
-        }
+      const ESPTime now = this->time_->now();
+      if (now.is_valid()) {
+        const int64_t local_seconds =
+            (int64_t) (days_from_civil(now.year, now.month, now.day_of_month) - CLOCK_EPOCH_DAYS) * 86400 +
+            now.hour * 3600 + now.minute * 60 + now.second;
+        publish_(value, (float) ((int64_t) seconds - local_seconds));
+      } else {
+        // Typically right after boot, before Home Assistant has sent the
+        // time: read the clock again in the next cycle.
+        inv.extras_pending |= 1 << EXTRA_CLOCK;
       }
-#endif
       break;
     }
     case EXTRA_LAST_ALARMS: {
@@ -774,17 +757,11 @@ void AuroraMonitor::apply_restored_values_() {
 }
 
 bool AuroraMonitor::current_day_(uint32_t *day) {
-#ifdef USE_TIME
-  if (this->time_ == nullptr)
-    return false;
   const ESPTime now = this->time_->now();
   if (!now.is_valid())
     return false;
   *day = (uint32_t) days_from_civil(now.year, now.month, now.day_of_month) + 1;
   return true;
-#else
-  return false;
-#endif
 }
 
 void AuroraMonitor::check_day_change_() {
@@ -792,12 +769,7 @@ void AuroraMonitor::check_day_change_() {
   const bool date_known = this->current_day_(&today);
 
   if (this->restore_pending_) {
-#ifdef USE_TIME
-    const bool has_clock = this->time_ != nullptr;
-#else
-    const bool has_clock = false;
-#endif
-    if (date_known || !has_clock || millis() - this->setup_ms_ >= RESTORE_WAIT_MS)
+    if (date_known || millis() - this->setup_ms_ >= RESTORE_WAIT_MS)
       this->apply_restored_values_();
     return;
   }

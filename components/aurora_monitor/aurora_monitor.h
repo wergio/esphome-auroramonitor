@@ -14,9 +14,7 @@
 
 #include "ABBAurora.h"
 
-#ifdef USE_TIME
 #include "esphome/components/time/real_time_clock.h"
-#endif
 
 namespace esphome {
 namespace aurora_monitor {
@@ -100,8 +98,8 @@ struct Inverter {
   sensor::Sensor *sensors[READING_COUNT]{};
   sensor::Sensor *power_in_total{nullptr};
   sensor::Sensor *efficiency{nullptr};
-  // Text and numeric sensor of each extra request (inverter_time for
-  // EXTRA_CLOCK, with clock_offset as its numeric sensor).
+  // Text or numeric sensor of each extra request (clock_offset for
+  // EXTRA_CLOCK).
   text_sensor::TextSensor *extra_texts[EXTRA_COUNT]{};
   sensor::Sensor *extra_values[EXTRA_COUNT]{};
   uint16_t extras_pending{0};  // bit mask of InverterExtra
@@ -151,9 +149,7 @@ class AuroraMonitor : public PollingComponent {
   void set_tx_enable_delay(uint32_t ms) { this->tx_enable_delay_ms_ = ms; }
   void set_response_timeout(uint32_t ms) { this->response_timeout_ms_ = ms; }
   void set_activity_led_pin(GPIOPin *pin) { this->activity_led_ = pin; }
-#ifdef USE_TIME
   void set_time(time::RealTimeClock *clock) { this->time_ = clock; }
-#endif
 
   void set_sensor(uint8_t inverter, InverterReading reading, sensor::Sensor *sensor) {
     this->inverters_[inverter].sensors[reading] = sensor;
@@ -263,9 +259,7 @@ class AuroraMonitor : public PollingComponent {
   // Saved values loaded at boot wait for the clock before being published.
   bool restore_pending_{false};
   uint32_t setup_ms_{0};
-#ifdef USE_TIME
   time::RealTimeClock *time_{nullptr};
-#endif
 };
 
 // Button that pulses the reset pin of the RS485 adapter.
