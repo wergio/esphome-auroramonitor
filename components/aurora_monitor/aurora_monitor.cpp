@@ -45,7 +45,7 @@ static const ExtraSpec EXTRA_SPECS[EXTRA_COUNT] = {
     {63, 0, false},                    // serial number
     {65, 0, false},                    // manufacturing week and year
     {72, 0, false},                    // firmware release
-    {70, 0, false},                    // clock
+    {70, 0, true},                     // clock
     {86, 0, false},                    // last four alarms
     {59, ISOLATION_RESISTANCE, true},  // isolation resistance (Riso)
     {59, I_LEAK_DC_DC, true},          // leakage current of the DC/DC stage

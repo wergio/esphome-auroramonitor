@@ -47,15 +47,15 @@ enum InverterReading : uint8_t {
 
 // Requests made only now and then, after the readings of a cycle: all of
 // them when the inverter connects (at boot and every morning), the alarm
-// history also when the alarm state changes, the slow measurements also
-// every hour.
+// history also when the alarm state changes, the clock and the slow
+// measurements also every hour.
 enum InverterExtra : uint8_t {
   EXTRA_MODEL,                     // command 58
   EXTRA_PART_NUMBER,               // command 52
   EXTRA_SERIAL_NUMBER,             // command 63
   EXTRA_MANUFACTURING,             // command 65
   EXTRA_FIRMWARE,                  // command 72
-  EXTRA_CLOCK,                     // command 70
+  EXTRA_CLOCK,                     // command 70 (hourly)
   EXTRA_LAST_ALARMS,               // command 86
   EXTRA_ISOLATION_RESISTANCE,      // command 59, measure 30 (hourly)
   EXTRA_LEAKAGE_CURRENT_DC_DC,     // command 59, measure 6 (hourly)

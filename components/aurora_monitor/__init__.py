@@ -183,8 +183,8 @@ EXTRA_TEXTS = {
     "firmware": ("EXTRA_FIRMWARE", _diagnostic_text("mdi:chip")),
     "last_alarms": ("EXTRA_LAST_ALARMS", _diagnostic_text("mdi:alert-outline")),
 }
-# Numeric sensor key -> (C++ InverterExtra, schema). The isolation resistance
-# and the leakage currents are read when the inverter connects and every hour.
+# Numeric sensor key -> (C++ InverterExtra, schema). These values are read when
+# the inverter connects and every hour.
 EXTRA_VALUES = {
     CONF_CLOCK_OFFSET: ("EXTRA_CLOCK", CLOCK_OFFSET_SCHEMA),
     "isolation_resistance": (
