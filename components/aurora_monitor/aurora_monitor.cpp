@@ -1,5 +1,6 @@
 #include "aurora_monitor.h"
 
+#include <cmath>
 #include <cstring>
 
 #include "ABBAuroraStrings.h"
@@ -118,6 +119,28 @@ static const InverterReading INSTANT_READINGS[] = {
     READING_TEMPERATURE_INVERTER,
     READING_TEMPERATURE_BOOSTER,
 };
+
+// Whether a reading can be published. Right after switching on, before its
+// DSP has started, the inverter answers with values that are not measures:
+// zero, or bytes that are not a number. Zero is discarded only for the
+// readings that cannot be zero while the inverter answers (it is powered by
+// its DC inputs and cannot run without the grid); currents and powers are
+// really zero while it does not feed the grid.
+static bool is_valid_reading(InverterReading reading, float value) {
+  if (!std::isfinite(value))
+    return false;
+  switch (reading) {
+    case READING_V_IN_1:
+    case READING_V_IN_2:
+    case READING_GRID_VOLTAGE:
+    case READING_GRID_FREQUENCY:
+    case READING_TEMPERATURE_INVERTER:
+    case READING_TEMPERATURE_BOOSTER:
+      return value != 0.0f;
+    default:
+      return true;
+  }
+}
 
 // Values saved to flash and published again after a reboot, so that they
 // stay visible in Home Assistant even if the device restarts at night.
@@ -391,9 +414,13 @@ void AuroraMonitor::on_probe_done_(Inverter &inv, bool ok) {
 void AuroraMonitor::on_reading_done_(Inverter &inv, bool ok) {
   const InverterReading reading = (InverterReading) this->reading_index_;
 
-  if (ok) {
-    const float value =
-        READING_SPECS[reading].energy ? (float) this->inverter_.CumulatedEnergy.Energy : this->inverter_.DSP.Value;
+  const float value =
+      READING_SPECS[reading].energy ? (float) this->inverter_.CumulatedEnergy.Energy : this->inverter_.DSP.Value;
+  if (ok && !is_valid_reading(reading, value)) {
+    // Not published: Home Assistant keeps the previous state.
+    ESP_LOGD(TAG, "Inverter %s: reading %u discarded (%f, global state %u)", inv.name.c_str(), this->reading_index_,
+             value, this->inverter_.DSP.GlobalState);
+  } else if (ok) {
     inv.last_values[reading] = value;
     inv.read_since_boot = true;
     publish_(inv.sensors[reading], value);
@@ -584,6 +611,11 @@ void AuroraMonitor::decode_extra_(Inverter &inv, InverterExtra extra) {
       measure.bytes[1] = data[4];
       measure.bytes[2] = data[3];
       measure.bytes[3] = data[2];
+      if (!std::isfinite(measure.value)) {
+        ESP_LOGD(TAG, "Inverter %s: extra request %u/%u discarded (not a number)", inv.name.c_str(),
+                 EXTRA_SPECS[extra].command, EXTRA_SPECS[extra].param);
+        break;
+      }
       publish_(value, measure.value);
       break;
     }

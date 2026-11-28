@@ -122,7 +122,7 @@ Each entry of `inverters` describes one inverter on the bus:
 
 A single inverter needs no prefix: its entities are simply named `v_in_1`, `cumulated_energy_total`, and so on. With 2 inverters the entities are, based on the prefixes, `inverter1_v_in_1`, `inverter1_cumulated_energy_total`, `inverter2_v_in_1`, `inverter2_cumulated_energy_total`, and so on.
 
-The Aurora protocol reports at most two DC inputs (MPPT channels). For an inverter with a single MPPT input, set `mppt_inputs: 1`: the sensors of the second input (`v_in_2`, `i_in_2`, `power_in_2`) are not created nor requested, and `power_in_total` and `efficiency` use the first input only.
+The Aurora protocol reports at most two DC inputs (MPPT channels). For an inverter with a single MPPT input, set `mppt_inputs: 1`: the sensors of the second input (`v_in_2`, `i_in_2`, `power_in_2`) are not created nor requested, and `power_in_total` and `efficiency` use the first input only. Set it also when the second input has no string connected: its voltage of 0 V would be discarded (see below), so `v_in_2` would stay *unknown*.
 
 Example of optional parameters:
 
@@ -202,6 +202,8 @@ The sensors have Home Assistant device and state classes: voltages, currents, po
 `efficiency` is computed only from powers read in the same cycle, with the grid power requested right after the input powers. It is *unknown* while the input power is below 100 W, where the ratio is dominated by the inverter's own consumption, and values outside 0-100% (possible when the irradiance changes between two readings) are discarded. Add a `filters:` entry under `sensors:` (for example a `sliding_window_moving_average`) for a smoother curve.
 
 Every answer carries a transmission state. When the inverter answers with an error, for example because the model does not provide a value, the value is treated as not read (the reason is in the `DEBUG` log) instead of publishing meaningless data.
+
+For a few seconds after switching on, before its measuring stage has started, the inverter answers without errors but with values that are not measures. So that they do not show up as drops in the Home Assistant graphs, the component never publishes a value that is not a number, and discards a zero for the input and grid voltages, the grid frequency and the temperatures, which cannot be zero while the inverter answers; Home Assistant keeps the previous state, *unknown* in the morning. A zero is kept for currents and powers, which are really zero until the inverter feeds the grid. Discarded values are in the `DEBUG` log.
 
 `global_state`, `alarm_state`, `inverter_state` and the input states come from the same request used to check that the inverter answers, so they add no traffic on the bus.
 
